@@ -6,41 +6,85 @@
 ## 노트북 구성
 | 섹션 | 내용 |
 |---|---|
-| 1–2 | MoleculeACE 데이터 내려받기, 분자 단위 train/val/test split |
+| 1–2 | MoleculeACE 30개 타깃 내려받기, 분자 단위 train/val/test split |
 | 3–4 | "한 곳만 다른 쌍" 판정(MCS 기반)과 쌍 생성 |
+| 4-1 | **학습 쌍 확대 (SQRL 방식)** — 학습은 유사 쌍 전부, 평가는 단일 부위 쌍만 |
 | 5–7 | 쌍 통계, cliff/non-cliff 시각화, easy/hard 시각화 |
 | 8 | Baseline: ECFP + SVR (분자별 예측 후 차이) |
 | 9–10 | 그래프 입력, GNN 쌍 모델, 가중 손실 학습 |
-| 11–12 | α 선택, baseline 비교, 결과 해석 |
+| 11 | 학습 곡선, α 교환 곡선, baseline 비교, 시드 편차 표, \|Δ\| 구간별 MAE, 과분산 진단 |
+| 12 | 결과 해석 |
 
 ## AC-aware 적용 지점
 | 아이디어 | 구현 |
 |---|---|
-| ① 표현 | 바뀐 원자(MCS 밖)를 별도 인코더로, 편집 종류(replace/insert/delete) one-hot |
-| ② 손실 | `w = 1 + α·|Δ|`, 배치별 `Σw` 정규화. α는 validation cliff RMSE로 선택 |
+| ① 표현 | 바뀐 원자(MCS 밖)를 별도 인코더로, 편집 종류(replace/insert/delete/multi) one-hot |
+| ② 손실 | `w = 1 + α·\|Δ\|`, 배치별 `Σw` 정규화. α는 validation cliff RMSE로 선택 |
 | ③ 설명 | 원자별 기여도 → 편집 부위 비율 (미구현) |
-| ④ 평가 | {train, easy, hard} × {cliff, non-cliff} RMSE |
+| ④ 평가 | {train, easy, hard} × {cliff, non-cliff} RMSE + \|Δ\| 구간별 MAE |
 
 ## 실행
 ```bash
-CUDA_VISIBLE_DEVICES=4 jupyter nbconvert --to notebook --execute --inplace \
+CUDA_VISIBLE_DEVICES=0 jupyter nbconvert --to notebook --execute --inplace \
     --ExecutePreprocessor.timeout=-1 ac_pipeline.ipynb
 ```
 - 환경: `aienv` (rdkit, torch, torch_geometric, scikit-learn)
 - `data/`와 `runs/`는 커밋하지 않는다. 노트북이 데이터를 내려받고 쌍을 다시 만든다
-- 쌍 생성은 MCS 계산 때문에 개발용 타깃 4개 기준 약 10분 걸린다. 결과는 `data/pairs/`에 캐시된다
-- 학습 가중치는 `runs/`에 저장되고, 있으면 다시 학습하지 않는다
+- 쌍 생성은 MCS 계산 때문에 개발용 타깃 4개 기준 약 10분 걸린다. 결과는 `data/pairs/`에 캐시된다.
+  판정 기준(`SIM_MIN`, `MAX_CHANGED` 등)을 바꾸면 `data/pairs/`를 지운다
+- 학습은 α 5개 기준 약 55분(A100 1장). 가중치는 `runs/gnn_a{α}_{TAG}_seed{seed}.pt`에 저장된다.
+  `TAG`에 hidden·dropout·weight decay·학습 쌍 확대 여부가 들어가므로, 설정을 바꾸면 캐시가 자동으로 갈린다
+- 진행 상황은 `runs/train.log`에 남는다 (노트북 출력은 실행이 끝나야 저장되므로)
 
-## 현재 상태 (2026-09-16, 타깃 4개, 시드 1개)
-test RMSE 기준으로 **쌍 모델이 아직 baseline을 이기지 못했다.**
+## 현재 상태 (2026-09-23, MoleculeACE 30개 타깃 전체)
 
-| test split | | zero | SVR | GNN α=4 |
-|---|---|---|---|---|
-| easy | cliff | 1.825 | **0.926** | 0.940 |
-| | non-cliff | **0.523** | 0.532 | 0.773 |
-| hard | cliff | 1.856 | **1.269** | 1.293 |
-| | non-cliff | **0.540** | 0.620 | 0.892 |
+분자 48,714행(고유 35,633개) · 평가 쌍 153,969개 · 학습 쌍 349,565개
+**α ∈ {0, 0.5, 1, 2, 4} × 시드 {0,1,2} = 15회 학습**
 
-train cliff RMSE 0.187 vs val 0.944로 과적합이 크다. 자세한 해석은 노트북 12번 섹션에 있다.
+**모델 비교가 처음으로 가능해졌고 α의 역할도 곡선으로 드러났다.
+다만 쌍 모델은 어떤 α에서도 SVR에 못 미치고, non-cliff에서는 `zero`에도 못 미친다.**
 
-다음 단계: 양방향 평균 예측 → 정규화 강화 → 나머지 26개 타깃으로 데이터 확대
+### 1. 시드 편차가 무너졌다 — 가장 큰 진전
+4개 타깃에서는 같은 설정·같은 시드로 두 번 돌려도 결론이 뒤집혔다(test hard cliff 1.160 → 1.362).
+30개 타깃에서 시드 폭이 **0.006~0.073**으로 줄어, 모델 간 격차가 폭보다 커졌다.
+데이터 12.7배 확대가 성능보다 **재현성**에 먼저 효과를 냈다.
+
+### 2. ② cliff 가중 손실 — 곡선에 내부 최적점이 있다
+| α | val cliff | val non-cliff |
+|---|---|---|
+| 0 | 1.163 | **0.518** |
+| 0.5 | 1.142 | 0.546 |
+| **1** | **1.135** | 0.559 |
+| 2 | 1.136 | 0.582 |
+| 4 | 1.155 | 0.596 |
+
+- **α=4는 열등하다** — α=1보다 cliff도 non-cliff도 나쁘다. 쓸모 있는 구간은 α ∈ [0, 2]
+- test hard cliff에서 α=0(1.324~1.358)과 α=1(1.276~1.286) 구간이 **겹치지 않는다** → 교환이 실재
+- **그러나 곡선 전체가 `zero` 선 오른쪽에 있다.** 어떤 α도 non-cliff에서 "항상 0"보다 나쁘다.
+  α 조정만으로는 SVR과의 격차를 좁힐 수 없다
+
+### 3. 아직 SVR에 진다 (α=1, 시드 3개 평균)
+| test split | | zero | SVR | GNN α=0 | GNN α=1 |
+|---|---|---|---|---|---|
+| easy | cliff | 1.720 | **0.928** | 1.120 | 1.079 |
+| | non-cliff | 0.465 | **0.447** | 0.507 | 0.549 |
+| hard | cliff | 1.715 | **1.256** | 1.339 | 1.282 |
+| | non-cliff | **0.470** | 0.524 | 0.576 | 0.618 |
+
+- 가장 가까운 칸은 test hard cliff, 격차 **0.026**(시드 폭 0.010) — 좁지만 열세
+- **hard `|Δ|≥2`(n=262)에서만 앞선다**: 1.472 vs 1.620 (9%)
+- 타깃별로는 30개 중 11개에서 GNN이 낫다
+
+### 4. 과적합은 계속 줄고 있다
+val/train RMSE 비: **5.0 → 1.9 → 약 1.4**
+
+### 5. 남은 병목: 과분산
+test hard에서 corr 0.509인데 기울기 0.647. 스칼라 축소(c=0.816)는 non-cliff 0.611 → 0.546을 얻는 대가로
+cliff 1.286 → 1.311로 악화돼 **해결이 안 된다.** non-cliff 오차의 대부분이 오경보라,
+`Δ̂`의 단조 함수로는 진짜 cliff와 구분할 수 없다.
+
+## 다음 단계
+1. **cliff 게이트** — `p̂ = P(|Δ|≥1)` 헤드 + `Δ̂ = p̂ · Δ̂_raw`.
+   목표: test hard non-cliff ≤ 0.53 (현재 0.611), cliff ≤ 1.28 유지
+2. ③ 설명(Grad-CAM) — 게이트가 붙으면 "왜 cliff라고 판단했나"로 이어진다
+3. SQRL 이웃 기준점으로 절대 pKi 복원 → MoleculeACE 논문 수치와 직접 비교
