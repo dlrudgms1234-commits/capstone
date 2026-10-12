@@ -13,6 +13,17 @@ for kind, pre, name in [('gine', 'pred_gnn', 'GINE 쌍'), ('mb', 'pred_pt', 'Mol
     ev = ((d.split == 'test') & (d.reason == 'pass')).values; y = d.delta.values[ev]; cl = np.abs(y) >= 1
     e = np.mean([p[[c for c in p.columns if c.startswith(pre)][0]].values[ev] for p in ps], 0)
     S4.loc[name] = [rm(e[cl] - y[cl]), rm(e[~cl] - y[~cl]), rm(e - y), np.nan, 4]
+# 분자별 모델도 큰 헤드로 학습한 결과가 있으면 ④에 쓴다 (없으면 ③의 작은 헤드 값)
+MOL_BIG = False
+_ref = pd.read_pickle(sorted(glob.glob(f'{H}/pred_head_gine_s?.pkl'))[0]); _ev = ((_ref.split == 'test') & (_ref.reason == 'pass')).values
+_E = _ref[_ev]; _y = _E.delta.values; _cl = np.abs(_y) >= 1
+for name, pat in [('GINE 분자별', '/home/bising0922/Capstone/runs/preds_mol_*_leakdrop_head1024_[0-9]*.pkl'),
+                  ('Mole-BERT 분자별', '/home/bising0922/Capstone/runs/preds_molpt_*_leakdrop_head1024_molebert_*.pkl')]:
+    f = glob.glob(pat)
+    if f:
+        c = pd.read_pickle(f[0]); pm = [{t: g_[f's{k}'].values for t, g_ in c.groupby('target')} for k in range(3)]
+        e = np.mean([[q[t][j] - q[t][i] for t, i, j in zip(_E.target, _E.i, _E.j)] for q in pm], 0)
+        S4.loc[name] = [rm(e[_cl] - _y[_cl]), rm(e[~_cl] - _y[~_cl]), rm(e - _y), np.nan, 4]; MOL_BIG = True
 SETS = {1: R[R.설정 == 1], 3: R[R.설정 == 3], 2: R[R.설정 == 2], 4: S4}
 NAME = {1: '① 누수 있음', 3: '② 누수 없음 · 팀원 방식', 2: '③ 누수 없음 · 우리 방식', 4: '④ ③ + 큰 헤드'}
 NPAIR = {1: '43,896', 3: '52,900', 2: '38,711', 4: '38,711'}
@@ -47,7 +58,7 @@ def table(s):
             if abs(t.loc[m, c] - best[c]) < 1e-9: v = f'<b>{v}</b>'
             if m in PAIR and abs(t.loc[m, c] - pbest[c]) < 1e-9: v = f'<u>{v}</u>'
             cells += f'<td>{v}</td>'
-        tag = ' (큰 헤드)' if s == 4 and m in ('GINE 쌍', 'Mole-BERT 쌍') else ''
+        tag = ' (큰 헤드)' if s == 4 and (m in ('GINE 쌍', 'Mole-BERT 쌍') or (MOL_BIG and m in ('GINE 분자별', 'Mole-BERT 분자별'))) else ''
         rows += f'<tr><td class="l">{m}{tag}</td>{cells}</tr>'
     return f'<p class="cap">{NAME[s]} — 한 군데만 다른 평가 쌍 {NPAIR[s]}개</p><table><tr><th class="l">모델</th><th>cliff</th><th>non-cliff</th><th>전체</th></tr>{rows}</table>'
 
@@ -81,7 +92,7 @@ GINE 쌍 cliff가 {g(2, 'GINE 쌍', 'cliff'):.3f} → <b>{G4.cliff:.3f}</b>, 전
 <tr><td class="l">① 누수 있음</td><td class="l">MoleculeACE 분할 그대로. 한 타깃의 평가 분자가 다른 타깃에서는 학습 분자일 수 있다</td><td>9,802</td></tr>
 <tr><td class="l">② 누수 없음 · 팀원 방식</td><td class="l">어느 타깃에서든 평가인 분자는 모든 타깃에서 평가로 옮긴다</td><td>14,895</td></tr>
 <tr><td class="l">③ 누수 없음 · 우리 방식</td><td class="l">그런 분자(5,093개)를 다른 타깃의 학습·검증에서 뺀다. 평가 분자는 MoleculeACE 그대로</td><td>9,802</td></tr>
-<tr><td class="l">④ ③ + 큰 헤드</td><td class="l">③과 같고, GINE·Mole-BERT 쌍 모델의 예측 헤드만 ECFP + MLP와 같게(1,024 → 1,024 → 1, 드롭아웃 0)</td><td>9,802</td></tr>
+<tr><td class="l">④ ③ + 큰 헤드</td><td class="l">③과 같고, {'GINE·Mole-BERT의 쌍·분자별 모델 모두' if MOL_BIG else 'GINE·Mole-BERT 쌍 모델'}의 예측 헤드를 ECFP + MLP와 같게(1,024 → 1,024 → 1, 드롭아웃 0)</td><td>9,802</td></tr>
 </table>
 <ul>
 <li>쌍 모델(ECFP + MLP, GINE, Mole-BERT): 30개 타깃을 한 모델로, 유사 쌍 전부로 학습. 시드 3개 예측의 평균(앙상블)</li>

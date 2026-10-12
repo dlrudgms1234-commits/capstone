@@ -11,9 +11,9 @@ pats = {
                      for v in ['v2', 'v2_molebert', 'v3', 'v3_molebert', 'v2_leakdrop', 'v2_leakdrop_molebert', 'v2_rnddrop', 'v2_rnddrop_molebert',
                                'v2_head1024_leakdrop', 'v2_head1024_leakdrop_molebert', 'v2_noedit', 'v2_nonchanged']],
     '분자별 모델 가중치·기록': [f'runs/{k}_{T[:3]}_h64_l3_dr0.3_wd0.0001_ep1000{v}_seed?.{x}' for k, x in [('gnnmol', 'pt'), ('histmol', 'csv')]
-                       for v in ['', '_molebert', '_v3', '_v3_molebert', '_leakdrop', '_leakdrop_molebert', '_rnddrop', '_rnddrop_molebert']],
+                       for v in ['', '_molebert', '_v3', '_v3_molebert', '_leakdrop', '_leakdrop_molebert', '_rnddrop', '_rnddrop_molebert', '_leakdrop_head1024', '_leakdrop_head1024_molebert']],
     '예측값 저장본 (노트북 빠른 재실행)': ['runs/preds_*_v2_*.pkl', 'runs/preds_*_v3_*.pkl', 'runs/preds_mol_*ep1000_[0-9]*.pkl', 'runs/preds_molpt_*ep1000_molebert_*.pkl',
-                              'runs/preds_mol*_v3*.pkl', 'runs/preds_mol*leakdrop*.pkl', 'runs/preds_mol*rnddrop*.pkl'],
+                              'runs/preds_mol*_v3*.pkl', 'runs/preds_mol*leakdrop*.pkl', 'runs/preds_mol*head1024*.pkl', 'runs/preds_mol*rnddrop*.pkl'],
     '실험 예측값 (ECFP + MLP, 헤드, 편집 정보, XAI)': ['runs/tmp/ecfp/pred_*_s?.pkl', 'runs/tmp/ecfp/report3.pkl', 'runs/tmp/head/pred_head_*_s?.pkl',
                                           'runs/tmp/ablC/pred_ablC_*_s?.pkl', 'runs/tmp/xai/xai_*.pkl', 'runs/tmp/mace/mlp_*.yml'],
 }
