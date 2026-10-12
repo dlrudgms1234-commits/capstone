@@ -94,3 +94,5 @@ CUDA_VISIBLE_DEVICES=0 jupyter nbconvert --to notebook --execute --inplace \
 - `data/`와 `runs/`는 올리지 않는다. 쌍 목록, 학습된 가중치, 예측값을 여기에 저장해 두고, 있으면 다시 계산하지 않는다
 - 처음부터 실행하면 수십 시간, 가중치와 예측값이 있으면 수 분
 - Mole-BERT 가중치는 `runs/pretrained/Mole-BERT.pth`에 둔다 ([github.com/junxia97/Mole-BERT](https://github.com/junxia97/Mole-BERT))
+- 누수 실험, ECFP + MLP, 예측 헤드 크기, XAI 등 추가 실험과 결과 보고 PDF의 재현 방법은 [`experiments/README.md`](experiments/README.md).
+  학습된 가중치·쌍 캐시·예측값 묶음(`capstone_cache_2026-10-12.tar.gz`, 약 590MB)을 받아 풀면 학습 없이 표와 PDF를 다시 만들 수 있다

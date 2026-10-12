@@ -2,3 +2,5 @@
 data/
 # 학습 가중치와 로그
 runs/
+# 재현용 캐시 묶음 (GitHub Release 등에 따로 올린다)
+release/
