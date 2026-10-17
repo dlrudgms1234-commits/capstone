@@ -1,11 +1,11 @@
 # 추가 실험 재현 방법
 
 `ac_pipeline.ipynb` 밖에서 돌린 실험(누수 실험, ECFP + MLP, 예측 헤드 크기, 편집 정보 빼 보기, XAI)과
-결과 보고 PDF(`누수_비교_보고서.pdf`, `결과_보고_헤드수정.pdf`)를 만드는 코드다.
+결과 보고 PDF(`누수_비교_보고서.pdf`, `결과_보고_헤드수정.pdf`)를 만드는 코드다. PDF 자체는 저장소에서 뺐고, 아래 2절 명령으로 다시 만들 수 있다.
 
 ## 0. 준비
 
-1. **캐시 받기** — 학습된 가중치·쌍 캐시·예측값 묶음(`capstone_cache_*.tar.gz`, 약 1.4GB)을 저장소 최상위에 풀면
+1. **캐시 받기** — 학습된 가중치·쌍 캐시·예측값 묶음(`capstone_cache_*.tar.gz`, 약 640MB)을 저장소 최상위에 풀면
    `data/`, `runs/` 아래 같은 자리에 들어간다. 이게 있으면 학습 없이 표·그림·PDF를 다시 만들 수 있다.
    ```bash
    tar -xzf capstone_cache_2026-10-12.tar.gz      # 저장소 최상위에서
@@ -33,6 +33,8 @@
 | 예측 헤드 크기 (④) | 노트북 `HEAD = 'big'` (1024 → 1024 → 1, 드롭아웃 0). `head/make_head.py` → `head/launch.sh` → `head/report_head.py` | 가중치 `_head1024`, `head/pred_head_*.pkl` |
 | 편집 정보 빼 보기 | 노트북 `USE_EDIT = False` / `DROP_NCHANGED = True`. `make_ablC.py` | 가중치 `_noedit` / `_nonchanged` |
 | XAI (Integrated Gradients) | `xai/make_xai.py` → `xai/xai.ipynb` 실행 → `xai/xai_track.py` | `xai/xai_*.pkl` |
+| ECFP + SVR 분자별·쌍 (타깃별, C는 검증 쌍의 Δ 오차로 고름) | `svr/svr_delta.py mol` / `svr/svr_delta.py pair all`. 쌍은 커널 K((A,B),(C,D)) = T(A,C)·T(B,D), 두 방향 학습, 반대칭 평균 | `svr/pred_svr_*.pkl` |
+| 분자별 그래프 모델의 조기 종료를 검증 쌍 Δ 오차로 | 노트북 `MOL_STOP = 'pair'` (기본값). `stoppair/make_stoppair.py` | 가중치 `_stoppair` |
 
 ## 2. 표·PDF 다시 만들기 (캐시만 있으면 학습 없이)
 

@@ -19,7 +19,7 @@ def build(name, mode, kind, seed=None, smoke=False):
     def rep(cid, a, b):
         c = [c for c in n['cells'] if c.get('id') == cid][0]; s = src(c); assert s.count(a) == 1, (name, cid, a[:60]); c['source'] = s.replace(a, b)
     rep('8a15e3a3', "DATA, PAIRS = 'data/moleculeace', 'data/pairs'", f"DATA, PAIRS = '{CAP}/data/moleculeace', '{CAP}/data/pairs'")
-    rep('8a15e3a3', "LEAK_MODE = None", f"LEAK_MODE = '{mode}'")
+    rep('8a15e3a3', "LEAK_MODE = 'drop_leak'   # 논문 설정", f"LEAK_MODE = '{mode}'")
     rep('18184d19', "RUNS = 'runs'", f"RUNS = '{OUT}/smoke_runs'" if smoke else f"RUNS = '{CAP}/runs'")
     if kind == 'full':
         rep('ablC-result', "f'runs/tmp/ablC/", f"f'{CAP}/runs/tmp/ablC/")
