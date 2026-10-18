@@ -1,0 +1,122 @@
+{
+ "table": [
+  {
+   "model": "svr",
+   "cliff": 0.914,
+   "non_cliff": 0.455,
+   "all": 0.591
+  },
+  {
+   "model": "gine_mol",
+   "cliff": 1.157,
+   "non_cliff": 0.514,
+   "all": 0.713
+  },
+  {
+   "model": "molebert_mol",
+   "cliff": 1.158,
+   "non_cliff": 0.549,
+   "all": 0.733
+  },
+  {
+   "model": "ecfp_mlp_pair",
+   "cliff": 0.898,
+   "non_cliff": 0.514,
+   "all": 0.622
+  },
+  {
+   "model": "svr_pair",
+   "cliff": 0.994,
+   "non_cliff": 0.428,
+   "all": 0.605
+  },
+  {
+   "model": "gine_pair",
+   "cliff": 0.914,
+   "non_cliff": 0.469,
+   "all": 0.6
+  },
+  {
+   "model": "molebert_pair",
+   "cliff": 0.889,
+   "non_cliff": 0.471,
+   "all": 0.592
+  }
+ ],
+ "compare": [
+  {
+   "a": "svr_pair",
+   "b": "svr",
+   "metric": "cliff",
+   "diff": 0.08,
+   "ci": [
+    0.067,
+    0.093
+   ],
+   "a_better": "3/30",
+   "p": 4.4075772166252136e-05
+  },
+  {
+   "a": "svr_pair",
+   "b": "svr",
+   "metric": "all",
+   "diff": 0.014,
+   "ci": [
+    0.007,
+    0.021
+   ],
+   "a_better": "6/30",
+   "p": 0.0012321043759584427
+  },
+  {
+   "a": "molebert_pair",
+   "b": "svr_pair",
+   "metric": "cliff",
+   "diff": -0.105,
+   "ci": [
+    -0.127,
+    -0.083
+   ],
+   "a_better": "28/30",
+   "p": 1.30385160446167e-07
+  },
+  {
+   "a": "molebert_pair",
+   "b": "svr_pair",
+   "metric": "all",
+   "diff": -0.013,
+   "ci": [
+    -0.025,
+    -0.0
+   ],
+   "a_better": "22/30",
+   "p": 0.027741437777876854
+  },
+  {
+   "a": "molebert_pair",
+   "b": "svr",
+   "metric": "cliff",
+   "diff": -0.025,
+   "ci": [
+    -0.048,
+    -0.0
+   ],
+   "a_better": "13/30",
+   "p": 0.7000329215079546
+  },
+  {
+   "a": "molebert_pair",
+   "b": "svr",
+   "metric": "all",
+   "diff": 0.001,
+   "ci": [
+    -0.012,
+    0.014
+   ],
+   "a_better": "15/30",
+   "p": 0.5027610473334789
+  }
+ ],
+ "n_pairs": 38711,
+ "n_cliff": 8778
+}
