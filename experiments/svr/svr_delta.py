@@ -1,5 +1,6 @@
-# ECFP + SVR 분자별 / 쌍 (타깃별). C는 검증 쌍의 Δ 오차로 고른다 (그래프 쌍 모델의 조기 종료와 같은 검증 쌍)
-# 사용: python svr_delta.py mol                       → pred_svr_mol.pkl (기존 기준 재현 확인 포함)
+# ECFP + Tanimoto 커널 SVR 분자별 / 쌍 (타깃별). C는 각 모델이 예측하는 값의 검증 오차로 고른다
+#   분자별: 검증 분자의 활성 오차 / 쌍: 검증 쌍 전체의 Δ 오차 (그래프 쌍 모델의 멈춤 기준과 같음)
+# 사용: python svr_delta.py mol                       → pred_svr_mol.pkl
 #       python svr_delta.py pair <타깃,...|all> [C,...] → pred_svr_pair_<이름>.pkl
 #       python svr_delta.py time <타깃> <C>              → 커널 만들기·학습 시간만 잰다
 # 데이터 규칙은 runs/tmp/ecfp/report3.py 설정 2(누수 분자 빼기)와 같다
@@ -42,27 +43,20 @@ def tanimoto_all(d):
     return inter / (n[:, None] + n[None, :] - inter)
 
 def run_mol(raw):
-    rows, new_pred, old_pred = [], [], []
+    """분자별: 분자 하나의 활성을 예측하므로 C는 검증 분자의 활성 오차로 고른다 (그래프 분자별 모델의 조기 종료와 같은 기준)"""
+    out, outv = [], []
     for t in T:
-        d = raw[t]; K = tanimoto_all(d); p = pairs_of(t, d)
-        tr = (d.split == 'train').values; y = d.p.values
-        va, te = p[p.split == 'val'], p[p.split == 'test']
-        vm = (d.split == 'val').values
-        res = {}
-        for C in C_GRID:
-            pm = SVR(kernel='precomputed', C=C).fit(K[tr][:, tr], y[tr]).predict(K[:, tr])
-            res[C] = (rm(pm[va.j.values] - pm[va.i.values] - va.delta.values), rm(pm[vm] - y[vm]), pm)
-        c_new = min(C_GRID, key=lambda C: res[C][0]); c_old = min(C_GRID, key=lambda C: res[C][1])
-        new_pred.append(te[['i', 'j', 'delta']].assign(target=t, pred=res[c_new][2][te.j.values] - res[c_new][2][te.i.values]))
-        old_pred.append(te[['i', 'j', 'delta']].assign(target=t, pred=res[c_old][2][te.j.values] - res[c_old][2][te.i.values]))
-        rows.append(dict(target=t, C_delta=c_new, C_mol=c_old))
-        log(t, 'C(Δ 기준)', c_new, 'C(분자 기준)', c_old)
-    new, old = pd.concat(new_pred, ignore_index=True), pd.concat(old_pred, ignore_index=True)
-    new.to_pickle(f'{OUT}/pred_svr_mol.pkl'); old.to_pickle(f'{OUT}/pred_svr_mol_oldC.pkl')
-    pd.DataFrame(rows).to_csv(f'{OUT}/svr_mol_C.csv', index=False)
-    for name, df in [('분자 기준 C (기존, 0.914/0.455/0.591 재현 확인)', old), ('Δ 기준 C (새로)', new)]:
-        e = df.pred.values - df.delta.values; cl = np.abs(df.delta.values) >= 1
-        log(f'{name}: 쌍 {len(df):,} | cliff {rm(e[cl]):.3f} non-cliff {rm(e[~cl]):.3f} 전체 {rm(e):.3f}')
+        d = raw[t]; K = tanimoto_all(d); pp = pairs_of(t, d); te, va = pp.query("split == 'test'"), pp.query("split == 'val'")
+        tr, vm = (d.split == 'train').values, (d.split == 'val').values; y = d.p.values
+        res = {C: SVR(kernel='precomputed', C=C).fit(K[tr][:, tr], y[tr]).predict(K[:, tr]) for C in C_GRID}
+        best = min(C_GRID, key=lambda C: rm(res[C][vm] - y[vm]))
+        out.append(te[['i', 'j', 'delta']].assign(target=t, pred=res[best][te.j.values] - res[best][te.i.values], C=best))
+        outv.append(va[['i', 'j', 'delta', 'reason']].assign(target=t, pred=res[best][va.j.values] - res[best][va.i.values], C=best))
+        log(t, 'C', best)
+    df = pd.concat(out, ignore_index=True); df.to_pickle(f'{OUT}/pred_svr_mol.pkl')
+    pd.concat(outv, ignore_index=True).to_pickle(f'{OUT}/predval_svr_mol.pkl')
+    e = df.pred.values - df.delta.values; cl = np.abs(df.delta.values) >= 1
+    log(f'분자별 SVR: 쌍 {len(df):,} | cliff {rm(e[cl]):.3f} non-cliff {rm(e[~cl]):.3f} 전체 {rm(e):.3f} (기존 0.914/0.455/0.591과 같아야 함)')
 
 def pair_kernel(K, a1, b1, a2, b2, chunk=2048):
     """쌍 커널 K((A,B),(C,D)) = T(A,C)·T(B,D). 메모리를 아끼려 줄 단위로 만든다"""
@@ -85,10 +79,11 @@ def run_pair_target(t, d, grid):
     for C in grid:
         t0 = time.time(); m = SVR(kernel='precomputed', C=C, cache_size=2000).fit(Ktr, y); t_fit = time.time() - t0
         pv, pt = pred(m, va), pred(m, te)
-        res[C] = (rm(pv - va.delta.values), pt)
+        res[C] = (rm(pv - va.delta.values), pt, pv)   # C는 검증 쌍 전체로 고른다 (그래프 쌍 모델의 멈춤 기준과 같음)
         log(t, f'C={C} 학습쌍 {len(y):,} 커널 {t_k:.0f}s 학습 {t_fit:.0f}s 서포트벡터 {len(m.support_):,} 검증 Δ RMSE {res[C][0]:.4f}')
     best = min(grid, key=lambda C: res[C][0])
-    return te[['i', 'j', 'delta']].assign(target=t, pred=res[best][1], C=best)
+    return (te[['i', 'j', 'delta']].assign(target=t, pred=res[best][1], C=best),
+            va[['i', 'j', 'delta', 'reason']].assign(target=t, pred=res[best][2], C=best))
 
 if __name__ == '__main__':
     mode = sys.argv[1]; raw = splits()
@@ -100,5 +95,6 @@ if __name__ == '__main__':
         ts = T if sys.argv[2] == 'all' else sys.argv[2].split(',')
         grid = [float(c) for c in sys.argv[3].split(',')] if len(sys.argv) > 3 else C_GRID
         name = sys.argv[4] if len(sys.argv) > 4 else ('all' if sys.argv[2] == 'all' else ts[0])
-        out = pd.concat([run_pair_target(t, raw[t], grid) for t in ts], ignore_index=True)
-        out.to_pickle(f'{OUT}/pred_svr_pair_{name}.pkl'); log('끝', name, len(out))
+        res = [run_pair_target(t, raw[t], grid) for t in ts]
+        out = pd.concat([r[0] for r in res], ignore_index=True); out.to_pickle(f'{OUT}/pred_svr_pair_{name}.pkl')
+        pd.concat([r[1] for r in res], ignore_index=True).to_pickle(f'{OUT}/predval_svr_pair_{name}.pkl'); log('끝', name, len(out))
