@@ -33,12 +33,13 @@
 | 예측 헤드 크기 (④) | 노트북 `HEAD = 'big'` (1024 → 1024 → 1, 드롭아웃 0). `head/make_head.py` → `head/launch.sh` → `head/report_head.py` | 가중치 `_head1024`, `head/pred_head_*.pkl` |
 | 편집 정보 빼 보기 | 노트북 `USE_EDIT = False` / `DROP_NCHANGED = True`. `make_ablC.py` | 가중치 `_noedit` / `_nonchanged` |
 | XAI (Integrated Gradients) | `xai/make_xai.py` → `xai/xai.ipynb` 실행 → `xai/xai_track.py` | `xai/xai_*.pkl` |
+| **하이퍼파라미터 튜닝 (지금 쓰는 도구)** | 저장소 최상위에서: `tune/make_tune.py --name <이름> --enc gine --wd 0.03` → `tune/run_queue.py runs/tune/<이름> 3` → `tune/tune_eval.py val runs/tune/<이름>` (valid 표 + 학습 곡선), 고른 뒤 `tune_eval.py test` 한 번. 경로 바꾸기 불필요. 자세한 순서는 최상위 README 4절 | `runs/tune/<이름>/` |
 | **실험 계획과 결정 기록** | `계획_고정_2026-10-18.md` — valid로만 고르고 test는 한 번만 연다는 규칙, 모든 결정과 그 시점 | – |
 | 그래프 모델 타깃별 학습 (기각: valid에서 네 모델 모두 30개 타깃 한 모델보다 나쁨) | `pertarget/make_pertarget.py` → `run_queue.py` → `collect.py val` | `runs/pertarget/<타깃>/` |
 | 최종 설계 1 (합 읽기·헤드 2048·조각 인코더 없음·한 군데만 다른 valid 쌍으로 멈춤) | `final/make_final.py`, `final/final_eval.py` | 가중치 `_h300_…_sum_valpass` |
 | 원인 찾기 (설계 1에서 하나씩 되돌림, Mole-BERT 쌍 시드 3) | `revert/make_revert.py`, `revert/compare.py` | `revert/pred_r_*.pkl` |
 | 최종 설계 2 + 과적합 대책 후보 (드롭아웃·AdamW·인코더 학습률) | `final2/auto.sh` (decide.py → make_final2.py → make_reg.py → run_queue.py), `final2/reg_compare.py` | `final2/pred_*.pkl` |
-| **최종 설계 3 = 예전 설계 + GINE 폭 300 + AdamW 0.01** (노트북 기본값) | `final3/make_final3.py`, `final3/adamw_s0.py` | 가중치 `_h300_dr0.3_wd0.01_…_head1024_adamw` |
+| **최종 설계 3 = 예전 설계 + GINE 폭 300 + AdamW 0.01** (노트북 기본값) | `final3/make_final3.py`, `final3/adamw_s0.py`, test: `final3/final3_eval.py val|eval` (결과 `final3/test_result_1.txt`), L2-SP: `final3/make_l2sp.py` | 가중치 `_h300_dr0.3_wd0.01_…_head1024_adamw` |
 | 검증 후보 비교 (중단, 참고용) | `screen/make_screen.py`, `screen/screen_val.py` | – |
 | 학습 곡선 (시드별 train vs valid, cliff·non-cliff) | `curves/plot_curves.py`, `curves/plot_curves_split.py` | – |
 | ECFP + Tanimoto 커널 SVR 분자별·쌍 (타깃별) | `svr/svr_delta.py mol` (C는 검증 분자 활성 오차로) / `svr/svr_delta.py pair <타깃,...> 1,10,100,1000 <이름>` (C는 검증 쌍 Δ 오차로, 쌍 커널 T(A,C)·T(B,D), 두 방향 학습, 반대칭 평균). 표·검정은 `svr/table.py` | `svr/pred_svr_*.pkl` |

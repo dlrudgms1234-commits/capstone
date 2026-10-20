@@ -10,7 +10,7 @@ from rdkit import Chem, RDLogger
 from rdkit.Chem import rdFingerprintGenerator
 from sklearn.svm import SVR
 RDLogger.DisableLog('rdApp.*')
-CAP = '/home/bising0922/Capstone'; OUT = f'{CAP}/runs/tmp/svr'; os.chdir(CAP)
+CAP = os.environ.get('CAP', os.getcwd()); OUT = f'{CAP}/runs/tmp/svr'; os.chdir(CAP); os.makedirs(OUT, exist_ok=True)   # 저장소 최상위에서 실행
 T = sorted(os.path.basename(f)[:-4] for f in glob.glob('data/moleculeace/CHEMBL*.csv'))
 C_GRID = [1, 10, 100, 1000]
 FPG = rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=2048)   # 노트북 SVR과 같은 ECFP4 2,048비트
