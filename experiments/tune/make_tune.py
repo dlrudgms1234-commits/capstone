@@ -5,17 +5,25 @@
     python experiments/tune/make_tune.py --name gine_wd0.03 --enc gine --wd 0.03
     python experiments/tune/run_queue.py runs/tune/gine_wd0.03 3      # 동시 3개 (GPU·CPU 사정에 맞게)
     python experiments/tune/tune_eval.py val runs/tune/gine_wd0.03     # valid 표 + 학습 곡선 그림
-옵션: --enc gine|mb|both, --wd 감쇠, --l2sp λ (Mole-BERT만), --pt-wd-scale 배수 (Mole-BERT 인코더 감쇠 = wd × 배수), --seeds 0,1,2,3,4, --no-mol (분자별 생략), --smoke (타깃 4개·2에폭 시험)
+옵션: --enc gine|mb|both, --wd 감쇠 (헤드·인코더 모두), --mb-scratch (Mole-BERT를 사전학습 가중치 없이 무작위 초기화로), --pt-lr (Mole-BERT 인코더 학습률, 기본 1e-4), --drop frag,edit,target (쌍 모델에서 조각 인코더·편집 정보·타깃 one-hot 빼기, --no-mol과 함께), --seeds 0,1,2,3,4, --no-mol (분자별 생략), --smoke (타깃 4개·2에폭 시험)
+
+빼기 실험 예 (조각 인코더 빼기, Mole-BERT 쌍 모델 시드 5개):
+    python experiments/tune/make_tune.py --name mb_nofrag --enc mb --pt-lr 1e-3 --drop frag --no-mol
+    python experiments/tune/run_queue.py runs/tune/mb_nofrag 3
+    python experiments/tune/tune_eval.py val runs/tune/mb_nofrag
 """
 import argparse, copy, json, os, shutil
 
 CAP = os.getcwd()
 ap = argparse.ArgumentParser()
 ap.add_argument('--name', required=True); ap.add_argument('--enc', default='gine', choices=['gine', 'mb', 'both'])
-ap.add_argument('--wd', type=float, default=0.01); ap.add_argument('--l2sp', type=float, default=0.0)
-ap.add_argument('--pt-wd-scale', type=float, default=1.0)   # Mole-BERT 인코더 감쇠 = wd × 이 값 (10이면 GINE 인코더와 같은 실제 세기)
+ap.add_argument('--wd', type=float, default=0.01)
+ap.add_argument('--pt-lr', type=float, default=1e-4)   # Mole-BERT 인코더 학습률. 1e-4가 아니면 가중치 이름에 _ptlr…
+ap.add_argument('--mb-scratch', action='store_true')
+ap.add_argument('--drop', default='')   # 쌍 모델 ablation: 'edit', 'target', 'edit,target'. 가중치 이름에 _noedit / _notgt   # Mole-BERT 사전학습 가중치를 불러오지 않는다. 가중치 이름에 _scratch
 ap.add_argument('--seeds', default='0,1,2,3,4'); ap.add_argument('--no-mol', action='store_true'); ap.add_argument('--smoke', action='store_true')
 a = ap.parse_args()
+DROP_IN = [x for x in a.drop.split(',') if x]; assert set(DROP_IN) <= {'edit', 'target', 'frag'} and (not DROP_IN or a.no_mol), 'ablation은 쌍 모델만 (--no-mol)'
 OUT = f'{CAP}/runs/tune/{a.name}'; RUNS = f'{OUT}/smoke_runs' if a.smoke else f'{CAP}/runs'
 nb = json.load(open(f'{CAP}/ac_pipeline.ipynb'))
 src = lambda c: ''.join(c['source'])
@@ -34,12 +42,33 @@ def build(name, kind, seed=None):
         rep('8a15e3a3', "USE_ALL_TARGETS = True", "USE_ALL_TARGETS = False")
         rep('18184d19', "LR, EPOCHS = 300, 3, 256, 1e-3, 200", "LR, EPOCHS = 300, 3, 256, 1e-3, 2")
         if kind == 'mol': rep('gnnmol-train', "MOL_EPOCHS = 1000", "MOL_EPOCHS = 2")
-    rep('18184d19', "DROPOUT, WD = 0.3, 0.01", f"DROPOUT, WD = 0.3, {a.wd}")
-    rep('18184d19', "L2SP = 0.0\n", f"L2SP = {a.l2sp}\n")
-    rep('18184d19', "PT_WD_SCALE = 1.0\n", f"PT_WD_SCALE = {a.pt_wd_scale}\n")
+    rep('18184d19', "WD = 0.01   #", f"WD = {a.wd}   #")
+    if DROP_IN:   # 쌍 모델 입력에서 빼기 (헤드 입력 크기도 맞춤). 이름은 GINE 태그에 붙여 Mole-BERT 태그도 따라 바뀐다
+        # frag = 조각 인코더(바뀐 부분만 읽는 쪽)의 출력 fa, fb 를 빼서 분자 전체만 보게 한다.
+        # 인코더 자체는 그대로 만들어 두므로(가중치 초기화 순서가 같아 분자 인코더가 전체 입력과 같게 시작한다) 쓰이지 않을 뿐이다
+        parts = ''.join([', fa, fb' if 'frag' not in DROP_IN else '', ', edit' if 'edit' not in DROP_IN else '',
+                         ', F.one_hot(tgt, len(DEV_TARGETS)).float()' if 'target' not in DROP_IN else ''])
+        n_mol = 3 if 'frag' in DROP_IN else 5   # 헤드 입력의 분자 벡터 칸 수: ha, hb, hb − ha (+ fa, fb)
+        size = ''.join([' + N_EDIT' if 'edit' not in DROP_IN else '', ' + len(DEV_TARGETS)' if 'target' not in DROP_IN else ''])
+        rep('3c8f160f', "        x = torch.cat([ha, hb, hb - ha, fa, fb, edit, F.one_hot(tgt, len(DEV_TARGETS)).float()], 1)", f"        x = torch.cat([ha, hb, hb - ha{parts}], 1)")
+        if 'frag' in DROP_IN:
+            rep('3c8f160f', "        fa, fb = masked_mean(self.frag(ga), ga), masked_mean(self.frag(gb), gb)\n", "")
+        rep('3c8f160f', "        self.head = make_head(5 * HIDDEN + N_EDIT + len(DEV_TARGETS))", f"        self.head = make_head({n_mol} * HIDDEN{size})")
+        abl = ''.join({'edit': '_noedit', 'target': '_notgt', 'frag': '_nofrag'}[x] for x in sorted(DROP_IN))
+        rep('3c8f160f', "_head1024_adamw_leakdrop'", f"_head1024_adamw_leakdrop{abl}'")
     rep('18184d19', "RUNS = 'runs'", f"RUNS = '{RUNS}'")
+    if 'molebert-train' in keep and DROP_IN:
+        rep('molebert-train', "        self.head = make_head(5 * PT_DIM + N_EDIT + len(DEV_TARGETS))", f"        self.head = make_head({n_mol} * PT_DIM{size})")
     if 'molebert-train' in keep:
         rep('molebert-train', "PT_PATH = f'{RUNS}/pretrained/Mole-BERT.pth'", f"PT_PATH = '{CAP}/runs/pretrained/Mole-BERT.pth'")
+        if a.mb_scratch:   # 사전학습 가중치만 빼고 구조·학습률·감쇠는 그대로
+            rep('molebert-train', "        self.load_state_dict(torch.load(PT_PATH, map_location='cpu'))", "        pass   # --mb-scratch: 사전학습 가중치를 불러오지 않는다 (무작위 초기화)")
+        if a.pt_lr != 1e-4:   # Mole-BERT 인코더 학습률 (헤드는 LR 그대로)
+            rep('molebert-train', "PT_DIM, PT_LAYERS, PT_LR = 300, 5, 1e-4 ", f"PT_DIM, PT_LAYERS, PT_LR = 300, 5, {a.pt_lr} ")
+        sfx = (f'_ptlr{a.pt_lr}' if a.pt_lr != 1e-4 else '') + ('_scratch' if a.mb_scratch else '')   # 가중치 이름 표시 (기존 가중치와 섞이지 않게)
+        if sfx:
+            rep('molebert-train', "    tag = f'{TAGS[setting]}_molebert'", f"    tag = f'{{TAGS[setting]}}_molebert{sfx}'")
+            if kind == 'mol': rep('molebert-mol', "PTMOL_TAG = f'{MOL_TAG}_molebert'", f"PTMOL_TAG = f'{{MOL_TAG}}_molebert{sfx}'")
     cols = "KEY + ['split', 'reason', 'delta', 'is_cliff']"
     if kind == 'gine':
         rep('3c8f160f', "        for s in SEEDS:\n            m = train(s, B, tag)", f"        for s in [{seed}]:   # 튜닝: 시드 {seed}\n            m = train(s, B, tag)")

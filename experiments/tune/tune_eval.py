@@ -70,7 +70,7 @@ if mode == 'val':
         st = json.load(open(f'{d}/settings.json'))
         P, out = load(d, 'val'); y = P.delta.values; cl = np.abs(y) >= 1
         out.update(svr(P, 'val'))
-        print(f'\n== {d}  (감쇠 {st["wd"]}, L2-SP {st["l2sp"]}, 시드 {st["seeds"]})')
+        print(f'\n== {d}  (감쇠 {st["wd"]}, 시드 {st["seeds"]})')
         print(f'한 군데만 다른 valid 쌍 {len(P):,}개 (cliff {cl.sum():,}). 괄호 = 최종 설계 3 (감쇠 0.01) 기준값')
         for lab, ps in out.items():
             e = np.mean(ps, 0) - y; r = REF.get(lab)
